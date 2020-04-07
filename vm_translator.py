@@ -18,7 +18,7 @@ def initialization(filename):
     Initialize base addresses.
     """
     ret = ['@256', 'D=A', '@SP', 'M=D']
-    ret.extend(process_call("Sys.init",0, filename, 0))
+    ret.extend( ("Sys.init",'0', filename, '0'))
     return ret
 
 def process_push_pop(command, arg1, arg2, fname, l_no):
@@ -26,8 +26,11 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
                'static':16, 'temp' : 5, 'pointer': 3}
     ret = []
     if arg1 == 'constant':
+
+        ##defining popping from constant
         if command == 'pop':
-            raise SyntaxError('Can\'t change memory segment. File {}. Line {}'.format(fname, l_no))
+            #raise SyntaxError('Can\'t change memory segment. File {}. Line {}'.format(fname, l_no))
+            return ['@SP', 'M=M-1']
         ret.extend([
             '@{}'.format(arg2),
         ])
@@ -198,6 +201,10 @@ def process_file(filename):
     state = [0, 0, ''] # bool_count, num_of_calls and func_state
     
     output = [x for i, line in enumerate(vm_code) for x in process_line(line, filename, i, state)]
+    ##debuging
+    print("DEBUGGING")
+    for i in output:
+        print(i)
     #for i, line in enumerate(vm_code):
     #    tmp = process_line(line, fname, i, bool_count)
     #    output.extend(tmp)
@@ -236,6 +243,7 @@ def translate_vm_to_asm(inp, outname=None):
         output.extend(process_file(inp))
     
     #output.extend(['(END)', '@END', '0;JMP'])
+    print(output)
     out_str = '\n'.join(output)
     with open(outname, 'w') as f:
         f.write(out_str)
@@ -251,9 +259,11 @@ if __name__ == "__main__":
     
     parser.add_argument('filename', action="store")
     parser.add_argument('-o', '--outfile' , action="store", default=None, dest='outname')
+    parser.add_argument('-x', '--xHAL', action="store", default=None, dest='xHal')
     args = parser.parse_args()
     fname = args.filename
     outname = args.outname
+    xHal = args.xHal
     if not os.path.exists(fname):
         print("Path doesn't exist")
         sys.exit()
