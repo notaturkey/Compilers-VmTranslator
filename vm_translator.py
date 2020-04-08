@@ -74,6 +74,9 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
 def process_arithmetic(command, filename, l_no, state):
     ret = []
     symb = {'add':'+', 'sub':'-', 'and':'&', 'or':'|', 'neg': '-', 'not':'!', 'eq':'JNE', 'lt':'JGE', 'gt':'JLE'}
+    if command == 'bool':
+        return ['@SP','A=M-1', 'D=M+1', 'D=!D', 'M=M-D']
+    
     if command in ('neg', 'not'): # unary operators
         return [
             '@SP', 'A=M-1', # SP--
@@ -161,7 +164,7 @@ def process_line(line, filename, l_no, state):
         if command == 'return':
             ret = process_return()
             #state[2] = ''
-        elif command in ('add', 'sub', 'neg', 'eq', 'gt', 'lt', 'and', 'or', 'not'):
+        elif command in ('add', 'sub', 'neg', 'eq', 'gt', 'lt', 'and', 'or', 'not','bool'):
             ret = process_arithmetic(command, filename, l_no, state)
         else:
             raise SyntaxError("{} is not a valid command. File {}. Line {}".format(command, filename, l_no))
