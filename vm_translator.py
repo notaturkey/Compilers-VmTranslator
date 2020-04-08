@@ -18,7 +18,7 @@ def initialization(filename):
     Initialize base addresses.
     """
     ret = ['@256', 'D=A', '@SP', 'M=D']
-    ret.extend( ("Sys.init",'0', filename, '0'))
+    ret.extend( process_call("Sys.init",0, filename, 0))
     return ret
 
 def process_push_pop(command, arg1, arg2, fname, l_no):
@@ -75,7 +75,7 @@ def process_arithmetic(command, filename, l_no, state):
     ret = []
     symb = {'add':'+', 'sub':'-', 'and':'&', 'or':'|', 'neg': '-', 'not':'!', 'eq':'JNE', 'lt':'JGE', 'gt':'JLE'}
     if command == 'bool':
-        return ['@SP','A=M-1', 'D=M+1', 'D=!D', 'M=M-D']
+        return ['@SP','AM=M-1','D=M','@{}END_BOOL_{}'.format(state[2],state[0]),'D;JEQ','@SP','A=M','M=-1','({}END_BOOL_{})'.format(state[2],state[0]),'@SP','M=M+1']
     
     if command in ('neg', 'not'): # unary operators
         return [
@@ -92,11 +92,11 @@ def process_arithmetic(command, filename, l_no, state):
     elif command in ('eq', 'gt', 'lt'):
         ret.extend([
             'D=M-D',
-            '@FALSE_{}'.format(state[0]), # Jump to make M=1 if condition is true
+            '@{}FALSE_{}'.format(state[2],state[0]), # Jump to make M=1 if condition is true
             'D;{}'.format(symb.get(command)), 
-            '@SP', 'A=M-1', 'M=-1', '@CONTINUE_{}'.format(state[0]), '0;JMP', # if above condition is false, M=0
-            '(FALSE_{})'.format(state[0]), '@SP', 'A=M-1', 'M=0', # if condition is true
-            '(CONTINUE_{})'.format(state[0])
+            '@SP', 'A=M-1', 'M=-1', '@{}CONTINUE_{}'.format(state[2],state[0]), '0;JMP', # if above condition is false, M=0
+            '({}FALSE_{})'.format(state[2],state[0]), '@SP', 'A=M-1', 'M=0', # if condition is true
+            '({}CONTINUE_{})'.format(state[2],state[0])
         ])
         state[0] += 1
     else:
@@ -218,9 +218,9 @@ def translate_vm_to_asm(inp, outname=None):
     if os.path.isdir(inp):
         is_dir = True
         if not outname:
-            if inp.endswith('/'):
+            if inp.endswith('/') or inp.endswith('\\'):
                 inp = inp[:-1]
-            outname = '{}.asm'.format(os.path.split(inp)[-1])
+            outname = '{}.asm'.format(inp.split('\\')[-1])
             outname = os.path.join(inp, outname)
     else:
         if not outname:
