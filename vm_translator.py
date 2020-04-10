@@ -75,13 +75,135 @@ def process_arithmetic(command, filename, l_no, state):
     ret = []
     symb = {'add':'+', 'sub':'-', 'and':'&', 'or':'|', 'neg': '-', 'not':'!', 'eq':'JNE', 'lt':'JGE', 'gt':'JLE'}
     if command == 'bool':
-        return ['@SP','AM=M-1','D=M','@{}END_BOOL_{}'.format(state[2],state[0]),'D;JEQ','@SP','A=M','M=-1','({}END_BOOL_{})'.format(state[2],state[0]),'@SP','M=M+1']
+        return [
+            '@SP',
+            'AM=M-1',
+            'D=M',
+            '@{}END_BOOL_{}'.format(state[2],state[0]),
+            'D;JEQ',
+            '@SP',
+            'A=M',
+            'M=-1',
+            '({}END_BOOL_{})'.format(state[2],state[0]),
+            '@SP',
+            'M=M+1'
+        ]
     
+    if command == 'l-not':
+        return [
+            '@SP',  
+            'A=M-1',
+            'D=M',
+            '@{}LNOT_IS_0_{}'.format(state[2],state[0]), 
+            'D;JEQ',
+            '@SP',
+            'A=M-1',
+            'M=0',
+            '@{}LNOT_IS_0_CONT_{}'.format(state[2],state[0]),
+            '0;JMP',
+            '({}LNOT_IS_0_{})'.format(state[2],state[0]),
+            '@SP',
+            'A=M-1',
+            'M=-1',
+            '({}LNOT_IS_0_CONT_{})'.format(state[2],state[0])
+        ]
+
+    if command == 'l-and':
+        return [
+            '@SP', 
+            'AM=M-1',
+            'D=M', 
+            '@{}LAND_IS_FALSE_{}'.format(state[2],state[0]),
+            'D;JEQ',
+            '@SP',
+            'A=M-1',
+            'D=M',
+            '@{}LAND_IS_FALSE_{}'.format(state[2],state[0]),
+            'D;JEQ',
+            '@SP', 
+            'AM=M-1',
+            'M=-1',
+            '@{}LAND_CONT_{}'.format(state[2],state[0]),
+            '0;JMP',
+            '({}LAND_IS_FALSE_{})'.format(state[2],state[0]),
+            '@SP', 
+            'A=M',
+            'M=0',
+            '({}LAND_CONT_{})'.format(state[2],state[0]),
+            '@SP',
+            'M=M+1'
+        ]
+    
+    if command == 'l-or':
+        return [
+            '@SP',
+            'AM=M-1',
+            'D=M',
+            '@{}L_OR_IS_TRUE_{}'.format(state[2],state[0]),
+            'D;JNE',
+            '@SP',
+            'AM=M-1',
+            'D=M',
+            '@{}L_OR_IS_TRUE_{}'.format(state[2],state[0]),
+            'D;JNE',
+            '@SP',
+            'A=M',
+            'M=0',
+            '({}L_OR_IS_TRUE_{})'.format(state[2],state[0]),
+            '@SP',
+            'A=M',
+            'M=-1',
+            '({}L_OR_CONT_{})'.format(state[2],state[0]),
+            '@SP',
+            'M=M+1'
+        ]
+    
+    if command == 'l-xor':
+        return[
+            '@SP',
+            'AM=M-1',
+            'D=M',
+            '@{}L_XOR_FRSTTRUE_{}'.format(state[2],state[0]),
+            'D;JNE',
+            '@SP',
+            'AM=M-1',
+            'D=M',
+            '@{}L_XOR_FRSTFALSE_SCNDTRUE_{}'.format(state[2],state[0]),
+            'D;JNE',
+            '@SP',
+            'A=M',
+            'M=0',
+            '@{}L_XOR_CONT_{}'.format(state[2],state[0]),
+            '0;JMP',
+            '({}L_XOR_FRSTTRUE_{})'.format(state[2],state[0]),
+            '@SP',
+            'AM=M-1',
+            'D=M',
+            '@{}L_XOR_SECONDTRUE_{}'.format(state[2],state[0]),
+            'D;JNE',
+            '({}L_XOR_SECONDTRUE_{})'.format(state[2],state[0]),
+            '@SP',
+            'A=M',
+            'M=0',
+            '@{}L_XOR_CONT_{}'.format(state[2],state[0]),
+            '0;JMP',
+            '({}L_XOR_FRSTFALSE_SCNDTRUE_{})'.format(state[2],state[0]),
+            '@SP',
+            'A=M',
+            'M=-1',
+            '@{}L_XOR_CONT_{}'.format(state[2],state[0]),
+            '0;JMP',
+            '({}L_XOR_CONT_{})'.format(state[2],state[0]),
+            '@SP',
+            'M=M+1'
+        ]
+
     if command in ('neg', 'not'): # unary operators
         return [
             '@SP', 'A=M-1', # SP--
             'M={}M'.format(symb.get(command)),          # save for next computation
         ]
+
     ret.extend([
         '@SP', 'AM=M-1', # SP--,
         'D=M', 'A=A-1'
@@ -164,10 +286,10 @@ def process_line(line, filename, l_no, state):
         if command == 'return':
             ret = process_return()
             #state[2] = ''
-        elif command in ('add', 'sub', 'neg', 'eq', 'gt', 'lt', 'and', 'or', 'not','bool'):
+        elif command in ('add', 'sub', 'neg', 'eq', 'gt', 'lt', 'and', 'or', 'not') or command in ('bool', 'l-not','l-and','l-or','l-xor'):
             ret = process_arithmetic(command, filename, l_no, state)
         else:
-            raise SyntaxError("{} is not a valid command. File {}. Line {}".format(command, filename, l_no))
+            raise SyntaxError("ERROR: Unknown Command: {} File {}. Line {}".format(command, filename, l_no))
     
     elif len(tokens) == 2:
         if command == 'label':
@@ -205,9 +327,9 @@ def process_file(filename):
     
     output = [x for i, line in enumerate(vm_code) for x in process_line(line, filename, i, state)]
     ##debuging
-    print("DEBUGGING")
-    for i in output:
-        print(i)
+    #print("DEBUGGING")
+    #for i in output:
+    #    print(i)
     #for i, line in enumerate(vm_code):
     #    tmp = process_line(line, fname, i, bool_count)
     #    output.extend(tmp)
@@ -246,7 +368,7 @@ def translate_vm_to_asm(inp, outname=None):
         output.extend(process_file(inp))
     
     #output.extend(['(END)', '@END', '0;JMP'])
-    print(output)
+    #print(output)
     out_str = '\n'.join(output)
     with open(outname, 'w') as f:
         f.write(out_str)
