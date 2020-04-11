@@ -418,7 +418,7 @@ if __name__ == "__main__":
     import argparse
     import os
     import sys
-
+    print("Extended instructions from Thomas McDonald at UCCS, original repo creddited to https://github.com/volf52/hack_vm_translator")
     parser = argparse.ArgumentParser(
         description="Enter path of directory or file to translate")
     

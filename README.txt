@@ -1,3 +1,5 @@
+
+Extended instructions from Thomas McDonald at UCCS, original repo creddited to https://github.com/volf52/hack_vm_translator
 usage:
 	For only one vm file:
 		vm_translator.py .\path\to\vmFile.vm
