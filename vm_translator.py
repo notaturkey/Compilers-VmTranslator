@@ -26,11 +26,15 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
                'static':16, 'temp' : 5, 'pointer': 3}
     ret = []
     if arg1 == 'constant':
-
         ##defining popping from constant
         if command == 'pop':
             #raise SyntaxError('Can\'t change memory segment. File {}. Line {}'.format(fname, l_no))
             return ['@SP', 'M=M-1']
+
+        if int(arg2) < 0:
+            raise SyntaxError('ERROR: Illegal index. File {}. Line {}'.format(fname, l_no))
+        if int(arg2) > 24576:
+            raise SyntaxError('ERROR: Index out of range. File {}. Line {}'.format(fname, l_no))
         ret.extend([
             '@{}'.format(arg2),
         ])
@@ -39,8 +43,8 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
             '@{}.{}'.format(fname, arg2) 
         ])
     elif arg1 in ('temp', 'pointer'):
-        if int(arg2) > 10:
-            raise SyntaxError('Invalid location for segment. File {}. Line {}'.format(fname, l_no))
+        if int(arg2) > 10 or int(arg2)<0:
+            raise SyntaxError('ERROR: Index Out of RangeInvalid location for segment. File {}. Line {}'.format(fname, l_no))
         ret.extend([
             '@R{}'.format(mapping.get(arg1)+int(arg2))
         ])
@@ -48,8 +52,31 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
         ret.extend([
             mapping.get(arg1), 'D=M', '@{}'.format(arg2), 'A=D+A'
         ])
+    elif arg1 == 'ram':
+        if int(arg2) < 0:
+            raise SyntaxError('ERROR: Illegal index. File {}. Line {}'.format(fname, l_no))
+        if int(arg2) > 24576:
+            raise SyntaxError('ERROR: Index out of range. File {}. Line {}'.format(fname, l_no))
+        if command == 'push':
+            return [
+                '@{}'.format(arg2),
+                'D=M',
+                '@SP',
+                'A=M', 
+                'M=D',
+                '@SP',
+                'M=M+1'
+            ]
+        if command == 'pop':
+            return [
+                '@SP',
+                'AM=M-1', 
+                'D=M',
+                '@{}'.format(arg2),
+                'M=D'
+            ]
     else:
-        raise SyntaxError('{} is invalid memory segment. File {}. Line {}'.format(arg1, fname, l_no))
+        raise SyntaxError('ERROR: Unknown memory segment, {} is invalid memory segment. File {}. Line {}'.format(arg1, fname, l_no))
     
     if command == 'push':
         if arg1 == 'constant':
@@ -73,7 +100,7 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
 
 def process_arithmetic(command, filename, l_no, state):
     ret = []
-    symb = {'add':'+', 'sub':'-', 'and':'&', 'or':'|', 'neg': '-', 'not':'!', 'eq':'JNE', 'lt':'JGE', 'gt':'JLE'}
+    symb = {'add':'+', 'sub':'-', 'and':'&', 'or':'|', 'neg': '-', 'not':'!', 'eq':'JNE', 'lt':'JGE', 'gt':'JLE','le':'JGT','ge':'JLT','ne':'JEQ'}
     if command == 'bool':
         return [
             '@SP',
@@ -221,6 +248,17 @@ def process_arithmetic(command, filename, l_no, state):
             '({}CONTINUE_{})'.format(state[2],state[0])
         ])
         state[0] += 1
+    #symb = {'add':'+', 'sub':'-', 'and':'&', 'or':'|', 'neg': '-', 'not':'!', 'eq':'JNE', 'lt':'JGE', 'gt':'JLE','le':'JGT','ge':'JLT','ne':'JEQ'}
+    elif command in ('le','ge','ne'):
+        ret.extend([
+            'D=M-D',
+            '@{}FALSE_{}'.format(state[2],state[0]), # Jump to make M=1 if condition is true
+            'D;{}'.format(symb.get(command)), 
+            '@SP', 'A=M-1', 'M=-1', '@{}CONTINUE_{}'.format(state[2],state[0]), '0;JMP', # if above condition is false, M=0
+            '({}FALSE_{})'.format(state[2],state[0]), '@SP', 'A=M-1', 'M=0', # if condition is true
+            '({}CONTINUE_{})'.format(state[2],state[0])
+        ])
+        state[0] += 1
     else:
         raise SyntaxError('File {}. Line {}'.format(filename, l_no))
     
@@ -286,13 +324,15 @@ def process_line(line, filename, l_no, state):
         if command == 'return':
             ret = process_return()
             #state[2] = ''
-        elif command in ('add', 'sub', 'neg', 'eq', 'gt', 'lt', 'and', 'or', 'not') or command in ('bool', 'l-not','l-and','l-or','l-xor'):
+        elif command in ('add', 'sub', 'neg', 'eq', 'gt', 'lt', 'and', 'or', 'not') or command in ('bool', 'l-not','l-and','l-or','l-xor') or command in ('le','ge','ne'):
             ret = process_arithmetic(command, filename, l_no, state)
         else:
             raise SyntaxError("ERROR: Unknown Command: {} File {}. Line {}".format(command, filename, l_no))
     
     elif len(tokens) == 2:
         if command == 'label':
+            #check if valid label [a-zA-Z_$:.]{1}[a-zA-Z0-9_$:.]*
+            #TODO
             ret = ['({}{})'.format(state[2], tokens[1])]
         elif command == 'goto':
             ret = ['@{}{}'.format(state[2], tokens[1]), '0;JMP']
@@ -309,10 +349,10 @@ def process_line(line, filename, l_no, state):
             ret = process_function(tokens[1], tokens[2])
             state[2] = '{}$'.format(tokens[1])
         else:
-            raise SyntaxError("{} is not a valid command. File {}. Line {}".format(command, filename, l_no))
+            raise SyntaxError("ERROR: Improperly formatted, {} is not a valid command. File {}. Line {}".format(command, filename, l_no))
     
     else:
-        raise SyntaxError("{} is not a valid command. File {}. Line {}".format(command, filename, l_no))
+        raise SyntaxError("ERROR: Improperly formatted, {} is not a valid command. File {}. Line {}".format(command, filename, l_no))
     
     return ret
 
