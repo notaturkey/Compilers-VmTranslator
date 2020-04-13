@@ -1,4 +1,3 @@
-
 def valid(line):
     """ Line valid or not? """
     line = line.strip()
@@ -21,6 +20,28 @@ def initialization(filename):
     ret.extend( process_call("Sys.init",0, filename, 0))
     return ret
 
+
+def findAllLabels(files):
+    global seenLabels
+    for filename in files: 
+        with open(filename, 'r+') as f:
+            state = [0,0,'']
+            lines = clean_lines(f.readlines())
+
+            for line in lines:
+                tokens = line.strip().split()
+                command = tokens[0]
+
+                if len(tokens) == 2:
+                    if command == 'label':
+                        #check if valid label [a-zA-Z_$:.]{1}[a-zA-Z0-9_$:.]*
+                        seenLabels.append(state[2]+tokens[1])
+                elif len(tokens) == 3:
+                    if command == 'function':
+                        state[2] = '{}$'.format(tokens[1])
+
+
+
 def process_push_pop(command, arg1, arg2, fname, l_no):
     mapping = {'local':'@LCL', 'argument':'@ARG', 'this':'@THIS','that':'@THAT', 
                'static':16, 'temp' : 5, 'pointer': 3}
@@ -33,7 +54,7 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
 
         if int(arg2) < 0:
             raise SyntaxError('ERROR: Illegal index. File {}. Line {}'.format(fname, l_no))
-        if int(arg2) > 24576:
+        if int(arg2) > 32767:
             raise SyntaxError('ERROR: Index out of range. File {}. Line {}'.format(fname, l_no))
         ret.extend([
             '@{}'.format(arg2),
@@ -55,7 +76,7 @@ def process_push_pop(command, arg1, arg2, fname, l_no):
     elif arg1 == 'ram':
         if int(arg2) < 0:
             raise SyntaxError('ERROR: Illegal index. File {}. Line {}'.format(fname, l_no))
-        if int(arg2) > 24576:
+        if int(arg2) > 32767:
             raise SyntaxError('ERROR: Index out of range. File {}. Line {}'.format(fname, l_no))
         if command == 'push':
             return [
@@ -154,7 +175,7 @@ def process_arithmetic(command, filename, l_no, state):
             '0;JMP',
             '({}LAND_IS_FALSE_{})'.format(state[2],state[0]),
             '@SP', 
-            'A=M',
+            'AM=M-1',
             'M=0',
             '({}LAND_CONT_{})'.format(state[2],state[0]),
             '@SP',
@@ -169,16 +190,18 @@ def process_arithmetic(command, filename, l_no, state):
             '@{}L_OR_IS_TRUE_{}'.format(state[2],state[0]),
             'D;JNE',
             '@SP',
-            'AM=M-1',
+            'A=M-1',
             'D=M',
             '@{}L_OR_IS_TRUE_{}'.format(state[2],state[0]),
             'D;JNE',
             '@SP',
-            'A=M',
+            'AM=M-1',
             'M=0',
+            '@{}L_OR_CONT_{}'.format(state[2],state[0]),
+            '0;JMP',
             '({}L_OR_IS_TRUE_{})'.format(state[2],state[0]),
             '@SP',
-            'A=M',
+            'AM=M-1',
             'M=-1',
             '({}L_OR_CONT_{})'.format(state[2],state[0]),
             '@SP',
@@ -218,8 +241,6 @@ def process_arithmetic(command, filename, l_no, state):
             '@SP',
             'A=M',
             'M=-1',
-            '@{}L_XOR_CONT_{}'.format(state[2],state[0]),
-            '0;JMP',
             '({}L_XOR_CONT_{})'.format(state[2],state[0]),
             '@SP',
             'M=M+1'
@@ -317,9 +338,12 @@ def process_function(arg1, arg2):
 
 
 def process_line(line, filename, l_no, state):
+    global seenLabels
     tokens = line.strip().split()
     command = tokens[0]
-    
+    _hex_re_comp = re.compile(r'0[xX][0-9a-fA-F]+')
+    _binary_re_comp = re.compile(r'0[bB][01]+')
+
     if len(tokens) == 1:
         if command == 'return':
             ret = process_return()
@@ -332,20 +356,45 @@ def process_line(line, filename, l_no, state):
     elif len(tokens) == 2:
         if command == 'label':
             #check if valid label [a-zA-Z_$:.]{1}[a-zA-Z0-9_$:.]*
-            #TODO
+            if not re.match(r'[a-zA-Z_$:.]{1}[a-zA-Z0-9_$:.]*', tokens[1]):
+                raise SyntaxError("ERROR: Illegal label: {} File {}. Line {}".format(tokens[1], filename, l_no))
             ret = ['({}{})'.format(state[2], tokens[1])]
         elif command == 'goto':
+            if (state[2]+tokens[1]) not in seenLabels:
+                raise SyntaxError("ERROR: Unresolved label: {} File {}. Line {}".format(state[2]+tokens[1], filename, l_no))    
             ret = ['@{}{}'.format(state[2], tokens[1]), '0;JMP']
         elif command == 'if-goto':
+            if (state[2]+tokens[1]) not in seenLabels:
+                raise SyntaxError("ERROR: Unresolved label: {} File {}. Line {}".format(state[2]+tokens[1], filename, l_no))  
             ret = ['@SP','M=M-1','A=M','D=M', '@{}{}'.format(state[2], tokens[1]), 'D;JNE']
+        else:
+            raise SyntaxError("ERROR: Improperly formatted: {} File {}. Line {}".format(command, filename, l_no))
               
     elif len(tokens) == 3:
+        if _hex_re_comp.match(tokens[2]):
+            tokens[2] = str(int( re.split(r'[xX]',tokens[2])[1] , 16))
+
+        if _binary_re_comp .match(tokens[2]):
+            tokens[2] = str(int(re.split(r'[bB]',tokens[2])[1] , 2))
+        
         if command in ('push', 'pop'):
             ret = process_push_pop(*tokens, filename, l_no)
         elif command == 'call':
+            if not re.match(r'[a-zA-Z_$:.]{1}[a-zA-Z0-9_$:.]*',tokens[1]):
+                raise SyntaxError("ERROR: Improperly formatted, {} is not a valid command. File {}. Line {}".format(command, filename, l_no))   
             ret = process_call(tokens[1], tokens[2], filename, state[1])
             state[1] += 1
         elif command == 'function':
+            #TODO
+            #CHECK FUNCTION NAME 
+            if not re.match(r'[a-zA-Z_$:.]{1}[a-zA-Z0-9_$:.]*',tokens[1]):
+                raise SyntaxError("ERROR: Improperly formatted, {} is not a valid command. File {}. Line {}".format(command, filename, l_no))     
+
+            try:
+                if int(tokens[2]) < 0:
+                    raise  SyntaxError("ERROR: function: {} Illegal count {} File {}. Line {}".format(tokens[1],tokens[2], filename, l_no))
+            except:
+                raise  SyntaxError("ERROR: function: {} Illegal count {} File {}. Line {}".format(tokens[1],tokens[2], filename, l_no))
             ret = process_function(tokens[1], tokens[2])
             state[2] = '{}$'.format(tokens[1])
         else:
@@ -364,7 +413,7 @@ def process_file(filename):
     filename = os.path.split(filename)[-1]
     filename = filename.replace('.vm', '')
     state = [0, 0, ''] # bool_count, num_of_calls and func_state
-    
+
     output = [x for i, line in enumerate(vm_code) for x in process_line(line, filename, i, state)]
     ##debuging
     #print("DEBUGGING")
@@ -390,6 +439,7 @@ def translate_vm_to_asm(inp, outname=None):
     
     
     #output, bool_count = initialization(), [0]
+    files = []
     output = initialization(os.path.splitext(os.path.split(outname)[-1])[0])
     if is_dir:
         for file in os.listdir(inp):
@@ -398,13 +448,24 @@ def translate_vm_to_asm(inp, outname=None):
                 continue
             if os.path.splitext(pth)[-1] != '.vm':
                 continue
-            with open(pth, 'r+') as f:
-                vm_code = clean_lines(f.readlines())
+            files.append(pth)
+
+        findAllLabels(files)
+        
+        for file in os.listdir(inp):
+            pth = os.path.join(inp, file)
+            if not os.path.isfile(pth):
+                continue
+            if os.path.splitext(pth)[-1] != '.vm':
+                continue
+            #with open(pth, 'r+') as f:
+            #    vm_code = clean_lines(f.readlines())
             
             tmp = process_file(pth)
             output.extend(tmp)
             
     else:
+        findAllLabels(inp)
         output.extend(process_file(inp))
     
     #output.extend(['(END)', '@END', '0;JMP'])
@@ -418,6 +479,9 @@ if __name__ == "__main__":
     import argparse
     import os
     import sys
+    import re
+    seenLabels = []
+
     print("Extended instructions from Thomas McDonald at UCCS, original repo creddited to https://github.com/volf52/hack_vm_translator")
     parser = argparse.ArgumentParser(
         description="Enter path of directory or file to translate")

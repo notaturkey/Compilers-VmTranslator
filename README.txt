@@ -1,3 +1,4 @@
+meant to be ran using a windows system, running this on a linux distribution might cause errors due to path naming and so on
 
 Extended instructions from Thomas McDonald at UCCS, original repo creddited to https://github.com/volf52/hack_vm_translator
 usage:
